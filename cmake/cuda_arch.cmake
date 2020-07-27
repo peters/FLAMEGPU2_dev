@@ -83,13 +83,21 @@ if(NOT CUDA_ARCH_LENGTH EQUAL 0)
     endif()
     set(GENCODES_FLAGS)
     set(MIN_CUDA_ARCH)
+
+    set(gpu_code "sm")
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0")
+        # If using CUDA 11, set the -dlto equivalent to the gencode flag(s).
+        # This might change / dissapear / not even help.
+        # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#optimization-of-separate-compilation
+        # -gencode arch=compute_NN,code=lto_NN
+        # @todo - this generates warnigns when multiple arch's are passed... even though it's the way the docs suggest doing it this way.
+        set(gpu_code "lto")
+    endif()
     # Convert to gencode arguments
-
     foreach(ARCH IN LISTS CUDA_ARCH)
-        set(GENCODES_FLAGS "${GENCODES_FLAGS} -gencode arch=compute_${ARCH},code=sm_${ARCH}")
+        set(GENCODES_FLAGS "${GENCODES_FLAGS} -gencode arch=compute_${ARCH},code=${gpu_code}_${ARCH}")
     endforeach()
-
-    # Add the last arch again as compute_, compute_ to enable forward looking JIT
+    # Add the last arch again as compute_, compute_ to enable forward looking JIT. (not sure how this fits with LTO.)
     list(GET CUDA_ARCH -1 LAST_ARCH)
     set(GENCODES_FLAGS "${GENCODES_FLAGS} -gencode arch=compute_${LAST_ARCH},code=compute_${LAST_ARCH}")
 
