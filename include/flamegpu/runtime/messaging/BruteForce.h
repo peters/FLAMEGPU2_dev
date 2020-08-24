@@ -464,7 +464,7 @@ __device__ T MsgBruteForce::Message::getVariable(const char(&variable_name)[N]) 
     // Ensure that the message is within bounds.
     if (index < this->_parent.len) {
         // get the value from curve using the stored hashes and message index.
-        T value = Curve::getVariable<T>(variable_name, this->_parent.combined_hash, index);
+        T value = Curve::getVariable_ldg<T>(variable_name, this->_parent.combined_hash, index);
         return value;
     } else {
         // @todo - Improved error handling of out of bounds message access? Return a default value or assert?
