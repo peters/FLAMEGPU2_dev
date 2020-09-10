@@ -182,6 +182,9 @@ TEMPLATE_VARIABLE_ARRAY_INSTANTIATE(function ## UChar, classfunction, unsigned c
 #include "flamegpu/model/AgentFunctionDescription.h"
 #include "flamegpu/model/EnvironmentDescription.h"
 #include "flamegpu/model/LayerDescription.h"
+#include "flamegpu/model/SubModelDescription.h"
+#include "flamegpu/model/SubAgentDescription.h"
+#include "flamegpu/model/SubEnvironmentDescription.h"
 #include "flamegpu/pop/AgentPopulation.h"
 #include "flamegpu/gpu/CUDAAgentModel.h"
 
@@ -323,11 +326,10 @@ TEMPLATE_ARRAY_TYPE_INSTANTIATE(Double, double)
 %feature("director") HostFunctionCallback;
 %feature("director") HostFunctionConditionCallback;
 %include "flamegpu/runtime/HostFunctionCallback.h"
-/* Rather than input a header with lots of other function pointer stuff just inline dclare the required enum */
+/* Rather than input a header with lots of other function pointer stuff just inline declare the required enum */
 enum FLAME_GPU_CONDITION_RESULT { CONTINUE, EXIT };
 
-
-// Disable non RTC function and function condtion set methods
+// Disable non RTC function and function condition set methods
 %ignore AgentDescription::newFunction;
 %ignore AgentFunctionDescription::getFunctionPtr;
 %ignore AgentFunctionDescription::setFunctionCondition;
@@ -353,7 +355,7 @@ namespace EnvironmentManager{
 %include "flamegpu/model/AgentDescription.h"
 %include "flamegpu/model/AgentFunctionDescription.h"
 
-/* Extend EnvironmentDescription to add a templated version of the arrray and arry+index get function with a different name so this can be instantiated */
+/* Extend EnvironmentDescription to add a templated version of the array and array+index get function with a different name so this can be instantiated */
 %include "flamegpu/model/EnvironmentDescription.h"
 %extend EnvironmentDescription{
     template<typename T, EnvironmentManager::size_type N> std::array<T, N> getArray(const std::string& name) const {
@@ -363,6 +365,11 @@ namespace EnvironmentManager{
 
 
 %include "flamegpu/model/LayerDescription.h"
+
+%include "flamegpu/model/SubModelDescription.h"
+%include "flamegpu/model/SubAgentDescription.h"
+%include "flamegpu/model/SubEnvironmentDescription.h"
+
 %include "flamegpu/pop/AgentPopulation.h"
 
 /* Extend AgentInstance to add a templated version of the getVariable function with a different name so this can be instantiated */
