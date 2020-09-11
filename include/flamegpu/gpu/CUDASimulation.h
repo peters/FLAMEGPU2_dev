@@ -54,7 +54,12 @@ class CUDASimulation : public Simulation {
          * GPU to execute model on
          * Defaults to device 0, this is most performant device as detected by CUDA
          */
-         int device_id = 0;
+        int device_id = 0;
+        /**
+         * Enable / disable the use of concurrency within a layer.
+         * Defaults to enabled.
+         */
+        bool inLayerConcurrency = true;
     };
     /**
      * Initialise cuda runner

@@ -180,10 +180,19 @@ bool CUDASimulation::step() {
 
     /*!  Stream creations */
     // Ensure there are enough streams to execute the layer.
-    while (streams.size() < nStreams) {
-        cudaStream_t stream;
+    // Taking into consideration if in-layer concurrency is disabled or not.
+    if (getCUDAConfig().inLayerConcurrency) {
+        while (streams.size() < nStreams) {
+            cudaStream_t stream = 0;
+            gpuErrchk(cudaStreamCreate(&stream));
+            streams.push_back(stream);
+        }
+    } else {
+        cudaStream_t stream = 0;
         gpuErrchk(cudaStreamCreate(&stream));
-        streams.push_back(stream);
+        while (streams.size() < nStreams) {
+            streams.push_back(stream);
+        }
     }
 
     // Reset message list flags
@@ -808,10 +817,16 @@ void CUDASimulation::simulate() {
     }
 
     // Destroy streams.
-    for (auto stream : streams) {
+    if (getCUDAConfig().inLayerConcurrency) {
+        for (auto stream : streams) {
+            gpuErrchk(cudaStreamDestroy(stream));
+        }
+        streams.clear();
+    } else {
+        cudaStream_t stream = streams.at(0);
         gpuErrchk(cudaStreamDestroy(stream));
+        streams.clear();
     }
-    streams.clear();
 }
 
 void CUDASimulation::reset(bool submodelReset) {
