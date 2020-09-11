@@ -364,4 +364,122 @@ TEST(TestCUDASimulation, MultipleInstances) {
     EXPECT_NO_THROW(CUDASimulation c2(m); c2.setPopulationData(pop););
 }
 
+
+// Concurrency tests / functions.
+// Agent function, which does some pointless maths a lot of times sequentially, to ensure kernel time is sufficiently larger for accurate timing.
+FLAMEGPU_AGENT_FUNCTION(SlowAgentFunction, MsgNone, MsgNone) {
+    // Repeatedly do some pointless maths on the value in register
+    const int INTERNAL_REPETITIONS = 65536;
+    for (int i = 0; i < INTERNAL_REPETITIONS; i++) {
+        // Reead and write all the way to global mem each time to make this intentionally slow
+        float v = FLAMEGPU->getVariable<float>("v");
+        FLAMEGPU->setVariable("v", v + v);
+    }
+    return ALIVE;
+}
+
+
+// Concurrency detection testing. Long term this might be better placed in a separate executable for performance testing.
+// @todo - Get information about the current device, in order to (accurately) determine a sensible population size. Doing this accuratly without using the occupancy calculator for the kernel(s) might be a touch awkward.
+// @todo - discard first timing?
+// @todo - switch to per-layer timing - this might not actually be required if the test case has been constructed in a way that leads to net simulation step speedup.
+// @todo - Add additional tests to check various edge cases where concurrency should be achievable.
+TEST(TestCUDASimulation, LayerConcurrency) {
+    // Number of repetitions to time, to improve accuracy of time evaluation. More is better (within reason)
+    const int TIMING_REPETITIONS = 4;
+
+    // Number of conccurent agent functions
+    const int CONCURRENCY_DEGREE = 4;
+
+    // Number of agents per population - i.e how many threads should be used per concurreny kernel.
+    // This needs to be sufficiently small that streams will actually be concurrent.
+    const unsigned int POPULATION_SIZES = 4096;
+
+    // Define a model with multiple agent types
+    ModelDescription m("concurrency_test");
+
+    // Create a layer, which contains one function for each agent type - with no dependencies this is allowed.
+    LayerDescription &layer  = m.newLayer();
+
+    std::vector<AgentPopulation *> populations = std::vector<AgentPopulation *>();
+
+    // Add a few agent types, each with a single agent function.
+    for (int i = 0; i < CONCURRENCY_DEGREE; i++) {
+        // Generate the agent type
+        std::string agent_name("agent_" + std::to_string(i));
+        std::string agent_function(agent_name + "_slowAgentFunction");
+        AgentDescription &a = m.newAgent(agent_name);
+        a.newVariable<float>("v");
+        auto &f = a.newFunction(agent_function, SlowAgentFunction);
+        layer.addAgentFunction(f);
+
+        // Generate an iniital population.
+        AgentPopulation * a_pop = new AgentPopulation(a, POPULATION_SIZES);
+        for (unsigned int i = 0; i < POPULATION_SIZES; ++i) {
+            auto agent = a_pop->getNextInstance();
+            agent.setVariable<float>("v", i);
+        }
+        populations.push_back(a_pop);
+    }
+
+    // Convert the model to a simulation
+    CUDASimulation s(m);
+    s.SimulationConfig().steps = 1;
+
+    // Set the flag saying don't use concurrency.
+    s.CUDAConfig().inLayerConcurrency = false;
+    s.applyConfig();
+
+    EXPECT_EQ(s.CUDAConfig().inLayerConcurrency, false);
+
+    // Time the simulation multiple times to get an average
+    float total_sequential_time = 0.f;
+    for (int r = 0; r < TIMING_REPETITIONS + 1; r++) {
+        // re-set each population
+        for (AgentPopulation * pop : populations) {
+            s.setPopulationData(*pop);
+        }
+        // Run and time the simulation
+        s.simulate();
+        // Store the time if not the 0th rep of the model.
+        if (r > 0) {
+            total_sequential_time += s.getSimulationElapsedTime();
+        }
+    }
+    float mean_sequential_time = total_sequential_time / TIMING_REPETITIONS;
+
+    // set the flag saying to use streams for agnet function concurrency.
+    s.CUDAConfig().inLayerConcurrency = true;
+    s.applyConfig();
+    EXPECT_EQ(s.CUDAConfig().inLayerConcurrency, true);
+
+    // Time the same simulations again, but this time with streams enabled.
+    float total_concurrent_time = 0.f;
+    for (int r = 0; r < TIMING_REPETITIONS + 1; r++) {
+        // re-set each population
+        for (AgentPopulation * pop : populations) {
+            s.setPopulationData(*pop);
+        }
+        // Run and time the simulation
+        s.simulate();
+        // Store the time if not the 0th rep of the model.
+        if (r > 0) {
+            total_concurrent_time += s.getSimulationElapsedTime();
+        }
+    }
+    float mean_concurrent_time = total_concurrent_time / TIMING_REPETITIONS;
+
+    // Calculate a speedup value.
+    float speedup = mean_sequential_time / mean_concurrent_time;
+
+    // @todo determine an actual threshold value to use, 1.5+ should be easily achievable, but this might change once concurrency is implemented
+    const float SPEEDUP_THRESHOLD = 1.25;
+    EXPECT_GE(speedup, SPEEDUP_THRESHOLD);
+
+    // printf(" mean_sequential_time %f\n", mean_sequential_time);
+    // printf(" mean_concurrent_time %f\n", mean_concurrent_time);
+    // printf(" speedup %f\n", speedup);
+}
+
+
 }  // namespace test_cuda_simulation
